@@ -1,6 +1,12 @@
 import processing.sound.*;
 import java.util.*;
 
+
+
+
+
+
+
 // Definisci il tempo massimo tra la pressione del primo e dell'ultimo pulsante
 int MAX_PRESS_TIME = 500; // 0.5 secondi
 
@@ -17,6 +23,7 @@ void initAudios(){
   for(int i=141; i<173; i++){  
     audios.put(str(char(i)), new SoundFile(this,"sounds/"+char(i)+".wav"));
   }
+  audios.put("-", new SoundFile(this, "sounds/command.m4a"));
 }
 
 // Definisci la mappa delle combinazioni di pulsanti e dei file audio associati
@@ -48,6 +55,7 @@ void initCombinations(){
   combinationMap.put("x", "1256");
   combinationMap.put("y", "12456");
   combinationMap.put("z", "1456");
+  combinationMap.put("-", "");
 }
 
 
@@ -69,11 +77,16 @@ String removeDuplicates(String str) {
   return result.toString();
 }
 
+// " <?> stands for error <-> stands for command char"
 String whichLetterNow(){
   
   currentCombination= removeDuplicates(currentCombination);
   
-  var letter = "-";
+  if(currentCombination.length() == 6){
+    return "-";
+  }
+  
+  var letter = "?";
   for(int i=141; i<173; i++){ 
     var currentConf = combinationMap.get(str(char(i)));
     
@@ -100,6 +113,69 @@ int[] buttonPins = {2, 3, 4, 5, 6, 7};
 int[] lastButtonStates = {HIGH, HIGH, HIGH, HIGH, HIGH, HIGH};
 
 
+Servo[] servoMotors = {new Servo(), new Servo(), new Servo(), new Servo(), new Servo(), new Servo()};
+boolean[] servoMotorsStates = new boolean[6];
+void initServoMotors(){
+  for(int i=0; i<6;i++){
+   servoMotors[i].attach(i);    // TODO define the number of the servoMotor
+   servoMotorsStates[i] = false;
+  }
+}
+boolean acceptOtherRequestOfMovingServoMotors = true;
+
+
+
+
+
+
+
+
+
+
+
+
+
+// with caracter "-" all servo motors are deactivated
+boolean ServoMotorsPerformLetter(String letterToPerform){
+ 
+  if(acceptOtherRequestOfMovingServoMotors == false){
+    return false;
+  }
+  else{
+    acceptOtherRequestOfMovingServoMotors = false;
+  }
+  
+  var configurationCode = combinationMap.get(letterToPerform);
+  
+  for(int i=0; i<6; i++){
+    if( (configurationCode.indexOf(char(i)) >= 0) != servoMotorsStates[i]){
+      // case in which the servo motors are in a different position
+      
+      servoMotors[i].write( (servoMotorsStates[i] == true)? 0 : 180);
+      servoMotorsStates[i] = !servoMotorsStates[i];
+    }
+  }
+  
+  delay(800);
+  
+  acceptOtherRequestOfMovingServoMotors = true;
+}
+
+
+
+
+void OnComposedLetter(String letterSelected){
+  
+  audios.get(letterSelected).play();
+      
+  if(letterSelected == "-"){
+    
+  }
+}
+
+
+
+
 
 void setup(){
   
@@ -107,16 +183,12 @@ void setup(){
   
   initCombinations();
   
+  initServoMotors();
+  
   // Imposta i pin dei pulsanti come input
   for (int i = 0; i < buttonPins.length; i++) {
     pinMode(buttonPins[i], INPUT);
   }
-}
-
-
-
-void SelectedLetter(String letterSelected){
-  audios.get(letterSelected).play();
 }
 
 
@@ -130,8 +202,8 @@ void loop() {
     
     var characterSelected = whichLetterNow();
     
-    if(characterSelected != "-"){
-      SelectedLetter(characterSelected);
+    if(characterSelected != "?"){
+      OnComposedLetter(characterSelected);
     }
     
     currentCombination = "";
