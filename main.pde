@@ -4,11 +4,21 @@ import java.util.*;
 
 
 
-
+String[] POTENTIAL_WORDS = {"tree", "apple", "house", "friend", "school", "love"};
+public String chooseRandomWord(){
+  return POTENTIAL_WORDS[int(random(POTENTIAL_WORDS.length))];
+}
+public String chooseRandomLetter(){
+  return str(char(int(random(32))+141));
+}
 
 
 // Definisci il tempo massimo tra la pressione del primo e dell'ultimo pulsante
-int MAX_PRESS_TIME = 500; // 0.5 secondi
+int MAX_PRESS_TIME = 50; // 0.5 secondi
+int MAX_COMMAND_COMPOSITION_TIME = 1500;
+int MAX_DELAY_TO_WAIT_SERVO_MOTORS_MOVEMENT = 800;
+
+long lastCommandCombinationPressedTime = 0;
 
 // Variabile per memorizzare la combinazione di pulsanti in corso
 String currentCombination = "";
@@ -21,9 +31,17 @@ long lastPressTime = 0;
 HashMap<String, SoundFile> audios = new HashMap<String, SoundFile>();
 void initAudios(){
   for(int i=141; i<173; i++){  
-    audios.put(str(char(i)), new SoundFile(this,"sounds/"+char(i)+".wav"));
+    audios.put(str(char(i)), new SoundFile(this,"sounds/"+char(i)+".mp3"));
   }
   audios.put("-", new SoundFile(this, "sounds/command.m4a"));
+  
+  for(int i=0; i<POTENTIAL_WORDS.length; i++){  
+    audios.put(POTENTIAL_WORDS[i], new SoundFile(this,"sounds/"+POTENTIAL_WORDS[i]+".m4a"));
+  }
+  
+  for(int i=0; i<NAME_OF_AUDIO_NOTIFICATIONS.length; i++){  
+    audios.put(NAME_OF_AUDIO_NOTIFICATIONS[i], new SoundFile(this,"sounds/"+NAME_OF_AUDIO_NOTIFICATIONS[i]+".m4a"));
+  }
 }
 
 // Definisci la mappa delle combinazioni di pulsanti e dei file audio associati
@@ -110,9 +128,9 @@ String whichLetterNow(){
 int[] buttonPins = {2, 3, 4, 5, 6, 7};
 
 // Definisci lo stato precedente dei pulsanti per evitare la ripetizione degli eventi
-int[] lastButtonStates = {HIGH, HIGH, HIGH, HIGH, HIGH, HIGH};
+int[] lastButtonStates = {1, 1, 1, 1, 1, 1};
 
-
+/*
 Servo[] servoMotors = {new Servo(), new Servo(), new Servo(), new Servo(), new Servo(), new Servo()};
 boolean[] servoMotorsStates = new boolean[6];
 void initServoMotors(){
@@ -121,13 +139,7 @@ void initServoMotors(){
    servoMotorsStates[i] = false;
   }
 }
-boolean acceptOtherRequestOfMovingServoMotors = true;
-
-
-
-
-
-
+*/
 
 
 
@@ -137,16 +149,10 @@ boolean acceptOtherRequestOfMovingServoMotors = true;
 
 // with caracter "-" all servo motors are deactivated
 boolean ServoMotorsPerformLetter(String letterToPerform){
- 
-  if(acceptOtherRequestOfMovingServoMotors == false){
-    return false;
-  }
-  else{
-    acceptOtherRequestOfMovingServoMotors = false;
-  }
   
   var configurationCode = combinationMap.get(letterToPerform);
   
+  /*
   for(int i=0; i<6; i++){
     if( (configurationCode.indexOf(char(i)) >= 0) != servoMotorsStates[i]){
       // case in which the servo motors are in a different position
@@ -155,21 +161,78 @@ boolean ServoMotorsPerformLetter(String letterToPerform){
       servoMotorsStates[i] = !servoMotorsStates[i];
     }
   }
+  */
   
-  delay(800);
-  
-  acceptOtherRequestOfMovingServoMotors = true;
+  return true;
 }
 
 
 
-
-void OnComposedLetter(String letterSelected){
+void OnWhateverUserInteraction(){
+  var currentProcess= getCurrentBrailleProcess();
   
-  audios.get(letterSelected).play();
+  if(currentProcess!=null){
+    currentProcess.runAtAllUserInteraction();
+  }
+}
+
+void OnNewProcessFromCommand(BrailleProcess processSelectedByTheCommand){
+  setNewChainOfProcesses(new BrailleProcess[] {processSelectedByTheCommand});
+}
+
+void OnBrailleLetterTyped(String letterTyped){
+  
+  var currentProcess= getCurrentBrailleProcess();
+  
+  if(currentProcess!=null){
+    currentProcess.runAtLetterTyped(letterTyped);
+  }
+}
+
+
+void OnRecognizedCombination(String combinationSelected){
+  
+  audios.get(combinationSelected).play();
       
-  if(letterSelected == "-"){
-    
+  long currentTime = millis();
+  
+  if(combinationSelected == "-"){
+    lastCommandCombinationPressedTime = currentTime;
+  }
+  else{
+      long elapsedTime = currentTime - lastCommandCombinationPressedTime;
+      if (elapsedTime < MAX_COMMAND_COMPOSITION_TIME){
+        
+        BrailleProcess processSelected;
+        
+        switch(combinationSelected){
+          case "a":
+          processSelected= new Braille_UploadMainFlowOfProcesses();
+            break;
+          case "b":
+          processSelected= new Braille_LetterReadingExercise("");
+            break;
+          case "c":
+          processSelected= new Braille_LetterWritingExercise("");
+            break;
+          case "d":
+          processSelected= new Braille_WordWritingExercise("");
+            break;
+          case "e":
+          processSelected= new Braille_WordHapticPresentation("");
+            break;
+          case "f":
+          processSelected= new Braille_DialogPeerToPeer();
+            break;
+          default:
+            processSelected = null;
+        }
+        
+        OnNewProcessFromCommand(processSelected);
+      }
+      else{
+        OnBrailleLetterTyped(combinationSelected);
+      }
   }
 }
 
@@ -183,7 +246,7 @@ void setup(){
   
   initCombinations();
   
-  initServoMotors();
+  //initServoMotors();
   
   // Imposta i pin dei pulsanti come input
   for (int i = 0; i < buttonPins.length; i++) {
@@ -203,8 +266,10 @@ void loop() {
     var characterSelected = whichLetterNow();
     
     if(characterSelected != "?"){
-      OnComposedLetter(characterSelected);
+      OnRecognizedCombination(characterSelected);
     }
+    
+    OnWhateverUserInteraction();
     
     currentCombination = "";
   }
@@ -214,7 +279,7 @@ void loop() {
     int buttonState = digitalRead(buttonPins[i]);
 
     // Se il pulsante è stato premuto
-    if (buttonState == HIGH && lastButtonStates[i] == LOW) {
+    if (buttonState == 1 && lastButtonStates[i] == 0) {
 
       // Aggiungi il pulsante alla combinazione corrente
       currentCombination += str(i);
@@ -226,9 +291,445 @@ void loop() {
       lastPressTime = currentTime;
     }
     // Se il pulsante è stato rilasciato
-    else if (buttonState == LOW && lastButtonStates[i] == HIGH) {
+    else if (buttonState == 0 && lastButtonStates[i] == 1) {
 
       lastButtonStates[i] = buttonState;
     }
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+//                                                                         BRILLE PROCESSES
+
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+int indexOfBrilleProcess = -1;
+BrailleProcess[] listOfProcesses = null;
+public BrailleProcess getCurrentBrailleProcess(){
+  if(indexOfBrilleProcess >= 0){
+    return listOfProcesses[indexOfBrilleProcess];
+  }
+  return null;
+}
+public void loadNextBrailleProcess(){
+  if(indexOfBrilleProcess >= 0){
+    getCurrentBrailleProcess().onKill();
+    indexOfBrilleProcess--;
+  }
+  if(indexOfBrilleProcess >= 0){
+    getCurrentBrailleProcess().runAtStart();
+  }
+}
+public void setNewChainOfProcesses(BrailleProcess[] chainOfProcesses){
+    if(indexOfBrilleProcess > 0){
+      getCurrentBrailleProcess().onKill();
+    }
+    if(chainOfProcesses!= null && chainOfProcesses.length > 0){
+       listOfProcesses = chainOfProcesses;
+    }
+    indexOfBrilleProcess = listOfProcesses.length -1;
+    getCurrentBrailleProcess().runAtStart();
+}
+
+
+
+public enum BrailleProcessType{
+  UploadMainFlowOfProcesses,    // CODE: CMD + a         
+  LetterReadingExercise,        // CODE: CMD + b
+  LetterWritingExercise,        // CODE: CMD + c
+  WordWritingExercise,          // CODE: CMD + d
+  WordHapticPresentation,       // CODE: CMD + e
+  DialogPeerToPeer,             // CODE: CMD + f
+  AudioNotification,
+}
+
+public abstract class BrailleProcess{
+ 
+  public BrailleProcessType type;
+  public boolean isKilled =false;
+  
+  public boolean isSuccess = false;
+  
+  public BrailleProcess(BrailleProcessType _type){
+    type = _type;
+  }
+  
+  public void runAtStart(){};
+  public void runAtAllUserInteraction(){};
+  public void runAtLetterTyped(String letterTyped){};
+  public void onKill()
+    {
+      isKilled = true;
+    };
+    
+  public void tickSelfAsFinished(){
+    if(isKilled == false){
+     loadNextBrailleProcess();
+    }
+  }
+}
+
+
+
+
+
+String[] NAME_OF_AUDIO_NOTIFICATIONS = {
+  // prepare to feel the braille character
+  "getReadyToFeelTheLetter", 
+  // compose the braille character associated with the letter "A"
+  "composeTheCombinationCorrespondentToLetter",
+  "successSound",
+  "failSound",
+  // Enter the braille characters in sequence to form the word
+  "typeInSequenceTheLetterInBrailleToComposeTheWord",
+  // prepare to feel the sequence of braille characters that form the word
+  "getReadyToFeelTheSequenceOfWord",
+  // dialogue mode: dial braille characters and allow your player friend to perceive what you are writing.
+  "introducitionToPeerToPeerDialog",
+  // Now we will learn how to translate the word
+  "NowWeAreGoingToLearnHowToTranslateTheWord",
+  // let's see how well you do at translating each letter of the word
+  "LetSCheckHowGoodAreWithTheTranslations",
+  // perfect! now try to compose the whole word
+  "PerfectNowTryToCompleteYourWord",
+};
+
+
+public class Braille_AudioNotification extends BrailleProcess{
+  public String textOfAudio;
+  public int stopAfterSec;
+  
+  // if _stopAfterSec < 0 then it stop at the first generic interaction of the user
+  public Braille_AudioNotification(String _textOfAudio, int _stopAfterSec){
+    super(BrailleProcessType.AudioNotification);
+    textOfAudio = _textOfAudio;
+    stopAfterSec=_stopAfterSec;
+  }
+  public void runAtStart(){
+      // play audio
+      audios.get(textOfAudio).play();
+      
+      if(stopAfterSec >=0){
+        delay(stopAfterSec);
+        tickSelfAsFinished();
+      }
+  }
+  public void runAtAllUserInteraction(){
+    if(stopAfterSec <0){
+          tickSelfAsFinished();
+    }
+  }
+  public void onKill(){
+    audios.get(textOfAudio).stop();
+    super.onKill();
+  }
+}
+
+public class Braille_LetterReadingExercise extends BrailleProcess{
+  public String letterToRead;
+  public boolean waitingForInput = false;
+  public Braille_LetterReadingExercise(String _letterToRead){
+    super(BrailleProcessType.LetterReadingExercise);
+    if(_letterToRead == ""){
+      _letterToRead = chooseRandomLetter();
+    }
+    letterToRead = _letterToRead;
+  }
+  public void runAtStart(){
+    // introduce the exercise with audio: getReadyToFeelTheLetter
+    audios.get(NAME_OF_AUDIO_NOTIFICATIONS[0]).play();
+    
+    delay(4000);
+    
+    if(isKilled) return;
+    
+    ServoMotorsPerformLetter(letterToRead);
+    
+    delay(MAX_DELAY_TO_WAIT_SERVO_MOTORS_MOVEMENT);
+    
+    if(isKilled) return;
+    
+    waitingForInput = true;
+  }
+  
+  public void runAtAllUserInteraction(){
+    if(waitingForInput){
+      
+      //in the version with the speech recognition here should be present the evaluation
+      delay(300);
+      
+      isSuccess = true;
+      // Success audio
+      audios.get(NAME_OF_AUDIO_NOTIFICATIONS[2]).play();
+      delay(300);
+            
+      tickSelfAsFinished();
+    }
+  }
+    
+  public void onKill(){
+    
+    ServoMotorsPerformLetter("-");
+          
+    super.onKill();
+  }
+}
+
+public class Braille_LetterWritingExercise extends BrailleProcess{
+  public String letterToWrite;
+  public boolean waitingForInput = false;
+  public Braille_LetterWritingExercise(String _letterToWrite){
+    super(BrailleProcessType.LetterWritingExercise);
+    if(_letterToWrite == ""){
+      _letterToWrite = chooseRandomLetter();
+    }
+    letterToWrite = _letterToWrite;
+  }
+  
+  public void runAtStart(){
+    // introduce the exercise with audio: composeTheCombinationCorrespondentToLetter
+    audios.get(NAME_OF_AUDIO_NOTIFICATIONS[1]).play();
+    
+    //TODO set the correct delay in order to not feel the gap between the first and the second part of the sentence
+    delay(3000);
+        
+    if(isKilled) return;
+    audios.get(letterToWrite).play();
+    
+    delay(300);
+    
+    if(isKilled) return;
+    
+    waitingForInput = true;
+  }
+  
+  public void runAtLetterTyped(String letterTyped){
+    if(waitingForInput == true){
+      
+      if(isKilled) return;
+          
+      // give a little bit of time at the sound of the letter typed general feedback
+      delay(300);
+      
+      if(letterTyped == letterToWrite){
+        // Success audio
+        audios.get(NAME_OF_AUDIO_NOTIFICATIONS[2]).play();
+        isSuccess = true;
+      }
+      else{
+        // Fail audio
+        audios.get(NAME_OF_AUDIO_NOTIFICATIONS[3]).play();
+      }
+      delay(300);
+      
+      tickSelfAsFinished();
+    }
+  }
+}
+
+
+public class Braille_WordWritingExercise extends BrailleProcess{
+  public String wordToWrite;
+  public boolean waitingForInput = false;
+  public int indexOfLetterTyped = 0;
+  public Braille_WordWritingExercise(String _wordToWrite){
+    super(BrailleProcessType.WordWritingExercise);
+    
+    if(_wordToWrite==""){
+      _wordToWrite = chooseRandomWord();
+    }
+    wordToWrite = _wordToWrite;
+  }
+  
+  public void runAtStart(){
+    // introduce the exercise with audio: typeInSequenceTheLetterInBrailleToComposeTheWord
+    audios.get(NAME_OF_AUDIO_NOTIFICATIONS[4]).play();
+    
+    //TODO set the correct delay in order to not feel the gap between the first and the second part of the sentence
+    delay(3000);
+        
+    if(isKilled) return;
+    audios.get(wordToWrite).play();
+    
+    delay(300);
+    
+    if(isKilled) return;
+    
+    waitingForInput = true;
+  }
+  
+  public void runAtLetterTyped(String letterTyped){
+    if(waitingForInput == true){
+      
+      if(isKilled) return;
+          
+      if(letterTyped != str(wordToWrite.charAt(indexOfLetterTyped))){
+        
+        // fail audio
+        audios.get(NAME_OF_AUDIO_NOTIFICATIONS[3]).play();
+        delay(300);
+        
+        tickSelfAsFinished();
+      }
+      else{
+        indexOfLetterTyped++;
+        if(indexOfLetterTyped>= wordToWrite.length()){
+          // Success audio
+          audios.get(NAME_OF_AUDIO_NOTIFICATIONS[2]).play();
+          delay(300);
+          isSuccess = true;
+          
+          tickSelfAsFinished();
+        }
+      }
+    }
+  }
+}
+
+
+public class Braille_WordHapticPresentation extends BrailleProcess{
+  public String wordToPresent;
+  public Braille_WordHapticPresentation(String _wordToPresent){
+    super(BrailleProcessType.WordHapticPresentation);
+    if(_wordToPresent==""){
+      _wordToPresent = chooseRandomWord();
+    }
+    wordToPresent = _wordToPresent;
+  }
+  public void runAtStart(){
+    // introduce the exercise with audio: getReadyToFeelTheSequenceOfWord
+    audios.get(NAME_OF_AUDIO_NOTIFICATIONS[5]).play();
+    
+    delay(2000);
+    
+    audios.get(wordToPresent).play();
+    
+    delay(2000);
+    
+    if(isKilled) return;
+    
+    for(int i=0; i<wordToPresent.length(); i++){
+      var letter = str(wordToPresent.charAt(i));
+      
+      ServoMotorsPerformLetter(letter);
+    
+      delay(MAX_DELAY_TO_WAIT_SERVO_MOTORS_MOVEMENT);
+      if(isKilled) return;
+      audios.get(letter).play();
+
+      delay(500);
+      
+      if(isKilled) return;
+    }
+    
+    tickSelfAsFinished();
+  }
+  
+  public void onKill(){
+    
+    ServoMotorsPerformLetter("-");
+          
+    super.onKill();
+  }
+}
+
+
+
+public class Braille_DialogPeerToPeer extends BrailleProcess{
+  public Braille_DialogPeerToPeer(){
+    super(BrailleProcessType.DialogPeerToPeer);
+  }
+  public void runAtStart(){
+    
+    //introducitionToPeerToPeerDialog
+    audios.get(NAME_OF_AUDIO_NOTIFICATIONS[6]).play();
+  }
+  
+  public void runAtLetterTyped(String letterTyped){
+    ServoMotorsPerformLetter(letterTyped);
+  }
+  
+  public void onKill(){
+    
+    ServoMotorsPerformLetter("-");
+          
+    super.onKill();
+  }
+}
+
+
+
+
+public class Braille_UploadMainFlowOfProcesses extends BrailleProcess{
+ 
+  String wordOfTheLesson;
+  public Braille_UploadMainFlowOfProcesses(){
+    super(BrailleProcessType.UploadMainFlowOfProcesses);
+    
+    wordOfTheLesson = chooseRandomWord();
+  }
+  public void runAtStart(){
+    
+    var wordWithoutLettersRepeted = removeDuplicates(wordOfTheLesson);
+        
+    int numbOfProcesses = 6 + wordWithoutLettersRepeted.length();
+    
+    var newListOfProcesses = new BrailleProcess[5];
+    
+    // Audionotification introducition To Game Flow: NowWeAreGoingToLearnHowToTranslateTheWord
+    newListOfProcesses[numbOfProcesses -1] = new Braille_AudioNotification(NAME_OF_AUDIO_NOTIFICATIONS[7], 3000);
+    
+    newListOfProcesses[numbOfProcesses -2] = new Braille_AudioNotification(wordOfTheLesson, -1);
+    
+    newListOfProcesses[numbOfProcesses -3] = new Braille_WordHapticPresentation(wordOfTheLesson);
+    
+    // Audionotification introducition To The Letter by letter translation: LetSCheckHowGoodAreWithTheTranslations
+    newListOfProcesses[numbOfProcesses -4] = new Braille_AudioNotification(NAME_OF_AUDIO_NOTIFICATIONS[8], -1);
+    
+    for(int i=0; i<wordWithoutLettersRepeted.length(); i++){
+        if(i%2==0){
+          newListOfProcesses[numbOfProcesses -5 -i] = new Braille_LetterReadingExercise(str(wordWithoutLettersRepeted.charAt(i)));
+        }
+        else{
+          newListOfProcesses[numbOfProcesses -5 -i] = new Braille_LetterWritingExercise(str(wordWithoutLettersRepeted.charAt(i)));
+        }
+    }
+    
+    // Audionotification : PerfectNowTryToCompleteYourWord
+    newListOfProcesses[1] = new Braille_AudioNotification(NAME_OF_AUDIO_NOTIFICATIONS[9], 1000);
+    
+    newListOfProcesses[0] = new Braille_WordWritingExercise(wordOfTheLesson);
+    
+    
+    setNewChainOfProcesses(newListOfProcesses);
   }
 }
