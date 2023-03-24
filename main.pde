@@ -1,4 +1,5 @@
 import processing.sound.*;
+import processing.io.*;
 import java.util.*;
 
 
@@ -250,7 +251,7 @@ void setup(){
   
   // Imposta i pin dei pulsanti come input
   for (int i = 0; i < buttonPins.length; i++) {
-    pinMode(buttonPins[i], INPUT);
+    GPIO.pinMode(buttonPins[i], GPIO.INPUT);
   }
 }
 
@@ -276,7 +277,7 @@ void loop() {
       
   // Controlla lo stato dei pulsanti
   for (int i = 0; i < buttonPins.length; i++) {
-    int buttonState = digitalRead(buttonPins[i]);
+    int buttonState = GPIO.digitalRead(buttonPins[i]);
 
     // Se il pulsante è stato premuto
     if (buttonState == 1 && lastButtonStates[i] == 0) {
